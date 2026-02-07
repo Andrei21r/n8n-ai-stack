@@ -52,10 +52,40 @@ if ! command -v docker &> /dev/null; then
     fi
 fi
 
-# Check if .env exists, if not copy from example
+# Check if .env exists, if not create with defaults
 if [ ! -f .env ]; then
-    echo -e "${YELLOW}Creating .env file from template...${NC}"
-    cp .env.example .env
+    echo -e "${YELLOW}Creating .env file...${NC}"
+    if [ -f .env.example ]; then
+        cp .env.example .env
+    else
+        # Fallback if .env.example is missing
+        cat <<EOF > .env
+# Domain Configuration
+DOMAIN_NAME=
+SSL_EMAIL=
+GENERIC_TIMEZONE=Europe/Moscow
+
+# Postgres Configuration
+POSTGRES_USER=n8n
+POSTGRES_PASSWORD=change_this_password
+POSTGRES_DB=n8n
+
+# RabbitMQ Configuration
+RABBITMQ_USER=user
+RABBITMQ_PASSWORD=change_this_password
+
+# n8n Security
+N8N_ENCRYPTION_KEY=change_this_to_a_random_string_of_characters
+N8N_BASIC_AUTH_ACTIVE=false
+N8N_BASIC_AUTH_USER=admin
+N8N_BASIC_AUTH_PASSWORD=password
+
+# n8n Execution Data Pruning
+EXECUTIONS_DATA_MAX_AGE=72
+EXECUTIONS_DATA_PRUNE_INTERVAL=3600
+EXECUTIONS_DATA_PRUNE_MAX_COUNT=5000
+EOF
+    fi
 else
     echo -e "${GREEN}.env file already exists.${NC}"
 fi
@@ -112,6 +142,41 @@ if [[ "$CURRENT_KEY" == "change_this_to_a_random_string_of_characters" || -z "$C
 fi
 
 echo -e "\n${GREEN}Configuration updated!${NC}"
+
+# System Checks
+echo -e "\n${YELLOW}Running system checks...${NC}"
+
+# Check Ports
+if command -v lsof >/dev/null; then
+    if lsof -Pi :80 -sTCP:LISTEN -t >/dev/null ; then
+        echo -e "${RED}Error: Port 80 is occupied (likely by Apache/Nginx). Please stop the service occupying port 80.${NC}"
+        exit 1
+    fi
+    if lsof -Pi :443 -sTCP:LISTEN -t >/dev/null ; then
+        echo -e "${RED}Error: Port 443 is occupied. Please stop the service occupying port 443.${NC}"
+        exit 1
+    fi
+else
+    echo -e "${YELLOW}lsof not found, skipping port check...${NC}"
+fi
+
+# Check/Create Swap
+TOTAL_RAM=$(grep MemTotal /proc/meminfo | awk '{print $2}')
+if [ "$TOTAL_RAM" -lt 2000000 ]; then
+    echo -e "${YELLOW}Low RAM detected (< 2GB). Checking swap...${NC}"
+    if [ ! -f /swapfile ]; then
+        echo -e "${YELLOW}Creating 2GB Swap file to prevent OOM errors...${NC}"
+        sudo fallocate -l 2G /swapfile
+        sudo chmod 600 /swapfile
+        sudo mkswap /swapfile
+        sudo swapon /swapfile
+        echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
+        echo -e "${GREEN}Swap created successfully.${NC}"
+    else
+        echo -e "${GREEN}Swap file already exists.${NC}"
+    fi
+fi
+
 echo -e "Starting services..."
 
 # Create necessary directories
