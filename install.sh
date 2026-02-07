@@ -8,6 +8,11 @@ NC='\033[0m' # No Color
 
 echo -e "${GREEN}=== n8n AI Stack Installer ===${NC}"
 
+# System Update
+echo -e "${YELLOW}Updating system packages...${NC}"
+sudo apt-get update && sudo apt-get upgrade -y
+
+
 # Check if Docker is installed
 if ! command -v docker &> /dev/null; then
     echo -e "${YELLOW}Docker is not installed. Attempting to install automatically...${NC}"
@@ -84,6 +89,12 @@ N8N_BASIC_AUTH_PASSWORD=password
 EXECUTIONS_DATA_MAX_AGE=72
 EXECUTIONS_DATA_PRUNE_INTERVAL=3600
 EXECUTIONS_DATA_PRUNE_MAX_COUNT=5000
+
+# n8n-data-manager Configuration
+GITHUB_TOKEN=your_github_pat
+GITHUB_REPO=your_username/your_backup_repo
+GITHUB_BRANCH=main
+DATED_BACKUPS=true
 EOF
     fi
 else
@@ -141,6 +152,19 @@ if [[ "$CURRENT_KEY" == "change_this_to_a_random_string_of_characters" || -z "$C
     update_env "N8N_ENCRYPTION_KEY" "$RAND_KEY"
 fi
 
+# Ask for GitHub Backup Config
+echo -e "\n${YELLOW}Backup Configuration (n8n-data-manager)${NC}"
+if grep -q "GITHUB_TOKEN=your_github_pat" .env; then
+    read -p "Enter GitHub PAT for backups (leave empty to skip): " GH_TOKEN
+    if [ -n "$GH_TOKEN" ]; then
+        update_env "GITHUB_TOKEN" "$GH_TOKEN"
+        read -p "Enter GitHub Repo (username/repo): " GH_REPO
+        update_env "GITHUB_REPO" "$GH_REPO"
+    else
+        echo -e "${YELLOW}Skipping backup configuration. You can set it later in .env${NC}"
+    fi
+fi
+
 echo -e "\n${GREEN}Configuration updated!${NC}"
 
 # System Checks
@@ -180,7 +204,7 @@ fi
 echo -e "Starting services..."
 
 # Create necessary directories
-mkdir -p local_files backups
+mkdir -p local_files
 
 # Start Docker Compose
 docker compose up -d
@@ -201,7 +225,7 @@ if [ -f /etc/debian_version ]; then
     # Non-interactive installation
     export DEBIAN_FRONTEND=noninteractive
     sudo apt-get update
-    sudo apt-get install -y unattended-upgrades
+    sudo apt-get install -y unattended-upgrades apt-listchanges
     
     # Configure 20auto-upgrades to enable daily updates
     echo 'APT::Periodic::Update-Package-Lists "1";
@@ -209,7 +233,13 @@ APT::Periodic::Download-Upgradeable-Packages "1";
 APT::Periodic::AutocleanInterval "7";
 APT::Periodic::Unattended-Upgrade "1";' | sudo tee /etc/apt/apt.conf.d/20auto-upgrades > /dev/null
 
-    echo -e "${GREEN}Automatic OS updates enabled.${NC}"
+    # Configure 50unattended-upgrades to automatically reboot if required
+    # and remove unused kernel packages
+    sudo sed -i 's|//Unattended-Upgrade::Automatic-Reboot "false";|Unattended-Upgrade::Automatic-Reboot "true";|' /etc/apt/apt.conf.d/50unattended-upgrades
+    sudo sed -i 's|//Unattended-Upgrade::Automatic-Reboot-Time "02:00";|Unattended-Upgrade::Automatic-Reboot-Time "04:00";|' /etc/apt/apt.conf.d/50unattended-upgrades
+    sudo sed -i 's|//Unattended-Upgrade::Remove-Unused-Kernel-Packages "true";|Unattended-Upgrade::Remove-Unused-Kernel-Packages "true";|' /etc/apt/apt.conf.d/50unattended-upgrades
+
+    echo -e "${GREEN}Automatic OS updates enabled (Reboot time: 04:00).${NC}"
 fi
 
 echo -e "\n${GREEN}=== Installation Complete ===${NC}"

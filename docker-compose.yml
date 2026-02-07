@@ -1,7 +1,6 @@
-version: '3.8'
-
 services:
   caddy:
+    container_name: caddy
     image: caddy:latest
     restart: always
     ports:
@@ -20,6 +19,7 @@ services:
       - n8n_network
 
   postgres:
+    container_name: postgres
     image: postgres:16-alpine
     restart: always
     environment:
@@ -37,6 +37,7 @@ services:
       retries: 5
 
   redis:
+    container_name: redis
     image: redis:alpine
     restart: always
     networks:
@@ -48,6 +49,7 @@ services:
       retries: 5
 
   rabbitmq:
+    container_name: rabbitmq
     image: rabbitmq:3-management
     restart: always
     environment:
@@ -65,6 +67,7 @@ services:
       retries: 5
 
   n8n:
+    container_name: n8n
     image: n8nio/n8n:latest
     restart: always
     ports:
@@ -101,6 +104,7 @@ services:
       - n8n_network
 
   n8n-worker:
+    container_name: n8n-worker
     image: n8nio/n8n:latest
     restart: always
     command: worker
@@ -131,35 +135,84 @@ services:
       - n8n_network
 
   ollama:
+    container_name: ollama
     image: ollama/ollama:latest
-    restart: unless-stopped
+    restart: always
     volumes:
       - ollama_data:/root/.ollama
     networks:
       - n8n_network
 
-  # Backup service (Databasus replacement)
-  # Uses a standard postgres backup tool to dump DB to local volume
-  backups:
-    image: prokops/postgres-backup-local
+  # Web UI for Ollama
+  open-webui:
+    container_name: open-webui
+    image: ghcr.io/open-webui/open-webui:main
     restart: always
     environment:
-      - POSTGRES_HOST=postgres
-      - POSTGRES_DB=${POSTGRES_DB}
-      - POSTGRES_USER=${POSTGRES_USER}
-      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
-      - SCHEDULE=@daily
-      - BACKUP_KEEP_DAYS=7
-      - BACKUP_KEEP_WEEKS=4
-      - BACKUP_KEEP_MONTHS=6
+      - OLLAMA_BASE_URL=http://ollama:11434
     volumes:
-      - ./backups:/backups
+      - open-webui_data:/app/backend/data
+    networks:
+      - n8n_network
     depends_on:
-      - postgres
+      - ollama
+
+  # Postgres Admin Interface
+  adminer:
+    container_name: adminer
+    image: adminer
+    restart: always
+    environment:
+      - ADMINER_DEFAULT_SERVER=postgres
     networks:
       - n8n_network
 
+  # Redis Web UI
+  redis-commander:
+    container_name: redis-commander
+    image: rediscommander/redis-commander:latest
+    restart: always
+    environment:
+      - REDIS_HOSTS=local:redis:6379
+    networks:
+      - n8n_network
+
+  # n8n Data Manager (GitHub Backups)
+  # Automatically backs up workflows and credentials to a private GitHub repo
+  n8n-backup:
+    image: alpine:latest
+    restart: always
+    # Install dependencies and run the backup script periodically
+    command: >
+      sh -c "apk add --no-cache curl git bash &&
+      curl -sSL -o /usr/local/bin/n8n-manager.sh https://raw.githubusercontent.com/Automations-Project/n8n-data-manager/main/n8n-manager.sh &&
+      chmod +x /usr/local/bin/n8n-manager.sh &&
+      echo '0 2 * * * /usr/local/bin/n8n-manager.sh backup --non-interactive' > /etc/crontabs/root &&
+      crond -f"
+    environment:
+      - CONF_GITHUB_TOKEN=${GITHUB_TOKEN}
+      - CONF_GITHUB_REPO=${GITHUB_REPO}
+      - CONF_GITHUB_BRANCH=${GITHUB_BRANCH:-main}
+      - CONF_DATED_BACKUPS=${DATED_BACKUPS:-true}
+      - CONF_DEFAULT_CONTAINER=n8n
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    networks:
+      - n8n_network
+
+  portainer:
+    image: portainer/portainer-ce:latest
+    restart: always
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - portainer_data:/data
+    networks:
+      - n8n_network
+    # Portainer will be accessible via Caddy at portainer.yourdomain.com
+    # No direct ports exposed for security
+
   watchtower:
+    container_name: watchtower
     image: containrrr/watchtower
     restart: always
     volumes:
@@ -175,6 +228,8 @@ volumes:
   postgres_data:
   n8n_data:
   ollama_data:
+  open-webui_data:
+  portainer_data:
 
 networks:
   n8n_network:
