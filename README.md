@@ -44,7 +44,7 @@ Automated installer for a production-ready n8n stack with AI capabilities, datab
    - Enter your email (for SSL notifications).
 
 The installer will:
-- Check for Docker and install it if missing.
+- Check for Docker and install it automatically if missing (Ubuntu/Debian).
 - Generate secure random passwords.
 - Configure auto-updates.
 - Start all services.
