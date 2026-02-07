@@ -10,7 +10,7 @@ echo -e "${GREEN}=== n8n AI Stack Installer ===${NC}"
 
 # System Update
 echo -e "${YELLOW}Updating system packages...${NC}"
-sudo apt-get update && sudo apt-get upgrade -y
+sudo apt-get update && sudo apt-get upgrade -y && sudo apt-get install -y git curl wget
 
 
 # Check if Docker is installed
@@ -186,16 +186,17 @@ fi
 
 # Check/Create Swap
 TOTAL_RAM=$(grep MemTotal /proc/meminfo | awk '{print $2}')
-if [ "$TOTAL_RAM" -lt 2000000 ]; then
-    echo -e "${YELLOW}Low RAM detected (< 2GB). Checking swap...${NC}"
+# If RAM < 8GB (approx), create 8GB swap to support Ollama
+if [ "$TOTAL_RAM" -lt 8000000 ]; then
+    echo -e "${YELLOW}Detected < 8GB RAM. Checking swap...${NC}"
     if [ ! -f /swapfile ]; then
-        echo -e "${YELLOW}Creating 2GB Swap file to prevent OOM errors...${NC}"
-        sudo fallocate -l 2G /swapfile
+        echo -e "${YELLOW}Creating 8GB Swap file to support AI models...${NC}"
+        sudo fallocate -l 8G /swapfile
         sudo chmod 600 /swapfile
         sudo mkswap /swapfile
         sudo swapon /swapfile
         echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
-        echo -e "${GREEN}Swap created successfully.${NC}"
+        echo -e "${GREEN}Swap (8GB) created successfully.${NC}"
     else
         echo -e "${GREEN}Swap file already exists.${NC}"
     fi

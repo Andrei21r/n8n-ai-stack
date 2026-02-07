@@ -138,6 +138,9 @@ services:
     container_name: ollama
     image: ollama/ollama:latest
     restart: always
+    environment:
+      - OLLAMA_NUM_PARALLEL=${OLLAMA_NUM_PARALLEL:-1}
+      - OLLAMA_MAX_LOADED_MODELS=${OLLAMA_MAX_LOADED_MODELS:-1}
     volumes:
       - ollama_data:/root/.ollama
     networks:
@@ -201,6 +204,7 @@ services:
       - n8n_network
 
   portainer:
+    container_name: portainer
     image: portainer/portainer-ce:latest
     restart: always
     volumes:
